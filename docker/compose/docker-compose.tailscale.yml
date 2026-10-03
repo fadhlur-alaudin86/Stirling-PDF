@@ -1,0 +1,16 @@
+services:
+  stirling-pdf:
+    ports: !override
+      - "127.0.0.1:8050:8080"
+      - "100.100.1.128:8050:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../../stirling/latest/data:/usr/share/tessdata:rw
+      - ../../stirling/latest/config:/configs:rw
+      - ../../stirling/latest/logs:/logs:rw
+      - /home/superbypassudin/stirling-data/pipeline:/pipeline:rw
+      - /home/superbypassudin/stirling-data/storage:/storage:rw
+      - /home/superbypassudin/stirling-data/customFiles:/customFiles:rw
+    environment:
+      STIRLING_ENGINE_SHARED_SECRET: "${STIRLING_ENGINE_SHARED_SECRET:-changeme-set-in-shell}"
