@@ -14,3 +14,4 @@ services:
       - /home/superbypassudin/stirling-data/customFiles:/customFiles:rw
     environment:
       STIRLING_ENGINE_SHARED_SECRET: "${STIRLING_ENGINE_SHARED_SECRET:-changeme-set-in-shell}"
+      AIENGINE_ENABLED: "false"
