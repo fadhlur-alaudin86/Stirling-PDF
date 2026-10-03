@@ -15,14 +15,14 @@ services:
       timeout: 10s
       retries: 16
     ports:
-      - "8080:8080"
+      - "8050:8080"
     volumes:
       - ../../stirling/latest/data:/usr/share/tessdata:rw
       - ../../stirling/latest/config:/configs:rw
       - ../../stirling/latest/logs:/logs:rw
     environment:
       DISABLE_ADDITIONAL_FEATURES: "false"
-      SECURITY_ENABLELOGIN: "false"
+      SECURITY_ENABLELOGIN: "true"
       FAT_DOCKER: "true"
       SYSTEM_DEFAULTLOCALE: en-US
       UI_APPNAME: Stirling-PDF
