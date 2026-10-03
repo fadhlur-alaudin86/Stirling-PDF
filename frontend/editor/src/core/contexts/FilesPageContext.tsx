@@ -250,6 +250,29 @@ export function FilesPageProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Cross-device sync without polling: refetch when the tab becomes visible
+  // again or regains focus (e.g. back from the camera/upload flow on a phone).
+  // Throttled so rapid focus flapping cannot stack server fetches.
+  useEffect(() => {
+    let lastRun = 0;
+    const maybeRefresh = () => {
+      if (document.hidden) return;
+      const now = Date.now();
+      if (now - lastRun < 5000) return;
+      lastRun = now;
+      void refresh();
+    };
+    const onVisibility = () => {
+      if (!document.hidden) maybeRefresh();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", maybeRefresh);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", maybeRefresh);
+    };
+  }, [refresh]);
+
   const fileMap = useMemo(() => {
     const map = new Map<FileId, StirlingFileStub>();
     for (const f of allFiles) map.set(f.id, f);

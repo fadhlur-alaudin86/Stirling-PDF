@@ -196,6 +196,40 @@ class ClassifyLabelControllerTest {
     }
 
     @Test
+    void classifyAndLabel_convertsImageInputToPdf() throws Exception {
+        withLabels(List.of(new ClassificationLabel("invoice", "Invoice", null)));
+
+        java.awt.image.BufferedImage image =
+                new java.awt.image.BufferedImage(1, 1, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(image, "png", png);
+
+        MultipartFile file = mock(MultipartFile.class);
+        when(file.getOriginalFilename()).thenReturn("photo.png");
+        when(file.getContentType()).thenReturn("image/png");
+        when(file.getBytes()).thenReturn(png.toByteArray());
+        when(file.getInputStream())
+                .thenAnswer(inv -> new java.io.ByteArrayInputStream(png.toByteArray()));
+        when(pdfDocumentFactory.createNewDocument()).thenAnswer(inv -> new PDDocument());
+        PDDocument document = mock(PDDocument.class);
+        when(pdfDocumentFactory.load(any(MultipartFile.class), eq(true))).thenReturn(document);
+        when(document.getNumberOfPages()).thenReturn(1);
+        when(pdfContentExtractor.extractPageTextRaw(document, 1)).thenReturn("");
+        when(aiEngineClient.post(eq("/api/v1/documents/classify"), anyString(), isNull()))
+                .thenReturn("{\"outcome\":\"classification\",\"labels\":[\"invoice\"]}");
+
+        try {
+            controller.classifyAndLabel(file, false);
+        } catch (Exception ignored) {
+            // The response needs a real temp file; conversion + engine call happen before it.
+        }
+
+        // The engine sees a PDF name: the png was converted before classification.
+        JsonNode request = sentEngineRequest();
+        assertThat(request.get("fileName").asText()).isEqualTo("photo.pdf");
+    }
+
+    @Test
     void windowPageNumbers_takesFirstAndLastWithoutOverlap() {
         assertEquals(List.of(1, 2, 4, 5), ClassifyLabelController.windowPageNumbers(5, 2));
         assertEquals(List.of(1, 2, 3), ClassifyLabelController.windowPageNumbers(3, 2));
