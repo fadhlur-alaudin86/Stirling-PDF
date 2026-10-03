@@ -1,10 +1,15 @@
 package stirling.software.proprietary.controller.api;
 
+import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -31,6 +36,8 @@ import stirling.software.common.model.tool.ToolIO;
 import stirling.software.common.service.CustomPDFDocumentFactory;
 import stirling.software.common.service.PdfMetadataService;
 import stirling.software.common.service.UserServiceInterface;
+import stirling.software.common.util.GeneralUtils;
+import stirling.software.common.util.PdfUtils;
 import stirling.software.common.util.TempFileManager;
 import stirling.software.common.util.WebResponseUtils;
 import stirling.software.proprietary.classification.ClassificationLabelProvider;
@@ -104,21 +111,40 @@ public class ClassifyLabelController {
 
     @PostMapping(value = "/classify-and-label", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     // PDF in, the same PDF out with a verdict on it, so a chain can be checked across this step.
-    @ToolIO(accepts = ToolFormat.PDF, produces = ToolFormat.PDF)
+    @ToolIO(
+            accepts = {ToolFormat.PDF, ToolFormat.IMAGE},
+            produces = ToolFormat.PDF)
     @Operation(
             summary = "Classify a PDF and label its metadata",
             description =
                     "Reads the first two and last two pages, classifies the document via the AI"
                             + " engine, and stores the result in the StirlingPDFClassification"
-                            + " metadata field. A document that already carries a verdict is"
+                            + " metadata field. Raster image uploads (png, jpg, gif, bmp, tif, webp)"
+                            + " are converted to PDF first. A document that already carries a verdict is"
                             + " passed through untouched unless reclassify=true.")
     public ResponseEntity<Resource> classifyAndLabel(
             @RequestParam("fileInput") MultipartFile fileInput,
             @RequestParam(value = "reclassify", defaultValue = "false") boolean reclassify)
             throws IOException {
         aiFeatureGate.requireClassify();
-        try (PDDocument document = pdfDocumentFactory.load(fileInput, true)) {
-            String fileName = safeFileName(fileInput.getOriginalFilename());
+        MultipartFile effectiveInput = fileInput;
+        String fileName = safeFileName(fileInput.getOriginalFilename());
+        if (isRasterImage(fileInput)) {
+            byte[] pdfBytes =
+                    PdfUtils.imageToPdf(
+                            new MultipartFile[] {fileInput},
+                            "fillPage",
+                            false,
+                            "color",
+                            pdfDocumentFactory);
+            fileName = GeneralUtils.generateFilename(fileName, ".pdf");
+            effectiveInput =
+                    new BytesMultipartFile("fileInput", fileName, "application/pdf", pdfBytes);
+            log.debug(
+                    "[classify-and-label] converted image {} to PDF",
+                    fileInput.getOriginalFilename());
+        }
+        try (PDDocument document = pdfDocumentFactory.load(effectiveInput, true)) {
 
             if (!reclassify && isClassified(document)) {
                 // Classifying twice costs a second engine call and charges for it, and a document
@@ -237,4 +263,81 @@ public class ClassifyLabelController {
     /** Request body for the engine's {@code /api/v1/documents/classify} endpoint. */
     private record ClassifyEngineRequest(
             String fileName, List<AiPageText> pages, List<EngineLabel> labels) {}
+
+    /** Raster formats ImageIO can read; vector/specialised image types stay rejected. */
+    private static final Set<String> CONVERTIBLE_IMAGE_EXTENSIONS =
+            Set.of("png", "jpg", "jpeg", "gif", "bmp", "tif", "tiff", "webp");
+
+    private static boolean isRasterImage(MultipartFile file) {
+        String contentType = file.getContentType();
+        if (contentType != null) {
+            String lower = contentType.toLowerCase(Locale.ROOT);
+            if (lower.startsWith("image/") && !lower.contains("svg")) {
+                return true;
+            }
+        }
+        String filename = Filenames.toSimpleFileName(file.getOriginalFilename());
+        if (filename == null) {
+            return false;
+        }
+        String lower = filename.toLowerCase(Locale.ROOT);
+        int dot = lower.lastIndexOf('.');
+        return dot >= 0 && CONVERTIBLE_IMAGE_EXTENSIONS.contains(lower.substring(dot + 1));
+    }
+
+    /** In-memory file for the converted PDF, so the rest of the flow keeps using MultipartFile. */
+    private static final class BytesMultipartFile implements MultipartFile {
+        private final String name;
+        private final String originalFilename;
+        private final String contentType;
+        private final byte[] content;
+
+        BytesMultipartFile(
+                String name, String originalFilename, String contentType, byte[] content) {
+            this.name = name;
+            this.originalFilename = originalFilename;
+            this.contentType = contentType;
+            this.content = content.clone();
+        }
+
+        @Override
+        public String getName() {
+            return name;
+        }
+
+        @Override
+        public String getOriginalFilename() {
+            return originalFilename;
+        }
+
+        @Override
+        public String getContentType() {
+            return contentType;
+        }
+
+        @Override
+        public boolean isEmpty() {
+            return content.length == 0;
+        }
+
+        @Override
+        public long getSize() {
+            return content.length;
+        }
+
+        @Override
+        public byte[] getBytes() {
+            return content.clone();
+        }
+
+        @Override
+        public InputStream getInputStream() {
+            return new ByteArrayInputStream(content);
+        }
+
+        @Override
+        public void transferTo(File dest) throws IOException {
+            Files.write(dest.toPath(), content);
+        }
+    }
 }
