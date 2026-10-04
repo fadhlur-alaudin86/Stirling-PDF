@@ -15,3 +15,48 @@ services:
     environment:
       STIRLING_ENGINE_SHARED_SECRET: "${STIRLING_ENGINE_SHARED_SECRET:-changeme-set-in-shell}"
       AIENGINE_ENABLED: "false"
+
+  # Shared Ollama for Stirling and other apps (generic name, reachable as
+  # http://ollama:11434 inside this network).
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    devices:
+      - nvidia.com/gpu=all
+    volumes:
+      - ollama-models:/root/.ollama
+    environment:
+      OLLAMA_KEEP_ALIVE: 30m
+    networks:
+      - stirling-network
+
+  # Stirling AI engine (talks to the shared ollama above).
+  ai-engine:
+    build:
+      context: ../..
+      dockerfile: docker/engine/Dockerfile
+    container_name: ai-engine
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_started
+    environment:
+      STIRLING_SMART_MODEL: ollama:qwen3.5:4b
+      STIRLING_FAST_MODEL: ollama:qwen2.5:3b
+      STIRLING_RAG_EMBEDDING_MODEL: ollama:nomic-embed-text
+      OLLAMA_BASE_URL: http://ollama:11434/v1
+      STIRLING_DOCUMENTS_BACKEND: sqlite
+      STIRLING_DOCUMENTS_SQLITE_PATH: /app/engine/data/rag.db
+      STIRLING_ENGINE_WORKERS: "1"
+      STIRLING_ENGINE_SHARED_SECRET: "${STIRLING_ENGINE_SHARED_SECRET:-changeme-set-in-shell}"
+      STIRLING_ENGINE_REQUIRE_AUTH: "true"
+      STIRLING_ALLOW_CONFIG_PUSH: "true"
+      STIRLING_REQUIRE_USER_ID: "false"
+    volumes:
+      - /home/superbypassudin/stirling-data/engine-data:/app/engine/data
+    networks:
+      - stirling-network
+
+volumes:
+  ollama-models:
