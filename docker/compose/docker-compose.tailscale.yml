@@ -1,5 +1,9 @@
 services:
   stirling-pdf:
+    build:
+      # Build steps (npm/puppeteer downloads) use host networking: the
+      # bridge's outbound is filtered on this machine.
+      network: host
     ports: !override
       - "127.0.0.1:8050:8080"
       - "100.100.1.128:8050:8080"
@@ -14,7 +18,7 @@ services:
       - /home/superbypassudin/stirling-data/customFiles:/customFiles:rw
     environment:
       STIRLING_ENGINE_SHARED_SECRET: "${STIRLING_ENGINE_SHARED_SECRET:-changeme-set-in-shell}"
-      AIENGINE_ENABLED: "false"
+      STIRLING_SKIP_BUNDLED_ENGINE: "true"
 
   # Shared Ollama for Stirling and other apps (generic name, reachable as
   # http://ollama:11434 inside this network).
