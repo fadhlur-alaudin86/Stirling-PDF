@@ -1,5 +1,9 @@
 services:
   stirling-pdf:
+    build:
+      # Build steps (npm/puppeteer downloads) use host networking: the
+      # bridge's outbound is filtered on this machine.
+      network: host
     ports: !override
       - "127.0.0.1:8050:8080"
       - "100.100.1.128:8050:8080"
