@@ -1398,8 +1398,14 @@ if isinstance(ai, dict) and "enabled" in ai:
 ' "$1" 2>/dev/null
 }
 
-# Env wins over settings.yml, as in Spring.
+# Env wins over settings.yml, as in Spring. STIRLING_SKIP_BUNDLED_ENGINE only
+# stops the bundled engine without touching aiEngine.enabled: unlike
+# AIENGINE_ENABLED=false it is not bound by Spring, so the AI feature stays on
+# while an external engine (e.g. a compose service) serves the requests.
 ai_engine_wanted() {
+  if [ "$(printf '%s' "${STIRLING_SKIP_BUNDLED_ENGINE:-false}" | tr '[:upper:]' '[:lower:]')" = "true" ]; then
+    return 1
+  fi
   if [ -n "${AIENGINE_ENABLED:-}" ]; then
     [ "$(printf '%s' "$AIENGINE_ENABLED" | tr '[:upper:]' '[:lower:]')" = "true" ]
     return
