@@ -24,6 +24,8 @@ services:
     restart: unless-stopped
     devices:
       - nvidia.com/gpu=all
+    ports:
+      - "127.0.0.1:11434:11434"
     volumes:
       - ollama-models:/root/.ollama
     environment:
